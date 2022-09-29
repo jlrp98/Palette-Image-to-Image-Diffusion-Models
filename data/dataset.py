@@ -27,6 +27,10 @@ def make_dataset(dir):
                     path = os.path.join(root, fname)
                     images.append(path)
 
+    #print("IMAGES: ")
+    #for i in images:
+    #    print(i)
+    
     return images
 
 def pil_loader(path):
@@ -47,13 +51,25 @@ class InpaintDataset(data.Dataset):
         self.loader = loader
         self.mask_config = mask_config
         self.mask_mode = self.mask_config['mask_mode']
+
+        if(self.mask_mode == 'file'):
+            self.mask_path = self.mask_config['mask_root']
+            mask_imgs = make_dataset(self.mask_path)
+            self.mask_imgs = mask_imgs
+            #print("MASK_IMGS: ")
+            #for i in self.mask_imgs:
+            #    print(i)
+
         self.image_size = image_size
 
     def __getitem__(self, index):
         ret = {}
         path = self.imgs[index]
         img = self.tfs(self.loader(path))
-        mask = self.get_mask()
+        mask = self.get_mask(index)
+
+        print(f'Mask shape: {mask.shape}  | Image shape: {img.shape}')
+
         cond_image = img*(1. - mask) + mask*torch.randn_like(img)
         mask_img = img*(1. - mask) + mask
 
@@ -67,7 +83,7 @@ class InpaintDataset(data.Dataset):
     def __len__(self):
         return len(self.imgs)
 
-    def get_mask(self):
+    def get_mask(self, index=None):
         if self.mask_mode == 'bbox':
             mask = bbox2mask(self.image_size, random_bbox())
         elif self.mask_mode == 'center':
@@ -82,7 +98,12 @@ class InpaintDataset(data.Dataset):
             irregular_mask = brush_stroke_mask(self.image_size, )
             mask = regular_mask | irregular_mask
         elif self.mask_mode == 'file':
-            pass
+            path = self.mask_imgs[index]
+            mask = self.loader(path)
+            new_size = self.image_size[:2]
+            mask = mask.resize(new_size)
+            mask = np.array(mask)
+
         else:
             raise NotImplementedError(
                 f'Mask mode {self.mask_mode} has not been implemented.')
